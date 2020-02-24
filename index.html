@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <link href="test.css" type="text/css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <!-- <script src="jquery.js"></script>                      //可自行下载jquery包 -->
+</head>
+
+<body>
+  <h1> ZX test demo Wavesurfer.js</h1>
+  <br /> <br /> <br /> <br /> <br />
+
+  <script src="wavesurfer.min.js"></script>
+  <script src="wavesurfer.timeline.js"></script>
+  <script src="wavesurfer.cursor.js"></script>
+  <script src="wavesurfer.spectrogram.js"></script>
+
+
+  <div id="waveform" class="waveform"></div>
+  <br />
+  <div id="wave-timeline" class="wave-timeline"></div>
+  <div class="zoom">
+    <!-- <input data-action="zoom" type="range" min="1" max="200" value="0" style="width: 100%" />    -->
+    <input data-action="zoom" type="range" min="1" max="200" value="0" />
+  </div>
+  <div id="wave-spectrogram" class="wave-spectrogram"></div>
+  <br /> <br />
+  <div class="box">
+    <button id="playPause">
+      <span id="play">
+        <i class=""></i>
+        Play
+      </span>
+
+      <span id="pause" style="display: none">
+        <i class=""></i>
+        Pause
+      </span>
+    </button>
+
+    <button id="btnStop">Stop</button>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var wavesurfer = WaveSurfer.create({
+        container: '#waveform',
+        barHeight: 2,
+        cursorColor: '#ff0000',
+        progressColor: '#0000ff',
+        scrollParent: true,
+        height: 160,
+        cursorWidth: 2,
+        autoCenter: true,
+        fillParent: true,
+        hideScrollbar: false,
+        barWidth: 2,
+
+
+        plugins: [
+          WaveSurfer.timeline.create({                             //timeline plugin
+            container: "#wave-timeline",
+            height: 10,
+          }),
+          WaveSurfer.cursor.create({                              //cursor plugin
+            container: "#wave-cursor",
+            showTime: true,
+            opacity: 1,
+            customShowTimeStyle: {
+              'background-color': '#000',
+              color: '#fff',
+              padding: '2px',
+              'font-size': '10px'
+            }
+          }),
+          WaveSurfer.spectrogram.create({
+            wavesurfer: wavesurfer,
+            container: "#wave-spectrogram",
+            labels: true,
+            fftSamples: 512
+          })
+        ]
+
+
+      });
+
+      let num = 0
+      let no = 0
+      let loading = false
+      let hasLoad = false
+      let allDuration = 0
+      let durations = []
+      let allPeaks = []
+
+      wavesurfer.backend.getPlayedPercents = () => {
+        return (durations.reduce((len, duration, i) => {
+          if (i < no - 1) {
+            return len + duration
+          }
+          return len
+        }, 0) + wavesurfer.getCurrentTime()) / allDuration || 0;
+      }
+
+      const load = cb => {
+        wavesurfer.getArrayBuffer(`${num}.mp3`, arraybuffer => {
+          wavesurfer.decodeArrayBuffer(arraybuffer, buffer => {
+            wavesurfer.backend.buffer = buffer;
+            wavesurfer.backend.setPeaks(null);
+            drawBuffer()
+            cb()
+          });
+        })
+        num++
+      }
+      const play = () => {
+        no++
+        const duration = wavesurfer.backend.getDuration()
+        wavesurfer.backend.play(0, duration)
+      }
+
+      const drawBuffer = () => {
+        allDuration += wavesurfer.getDuration()
+        durations.push(wavesurfer.getDuration())
+        const nominalWidth = Math.round(
+          allDuration *
+          wavesurfer.params.minPxPerSec *
+          wavesurfer.params.pixelRatio
+        );
+        const parentWidth = wavesurfer.drawer.getWidth();
+        let width = nominalWidth;
+        // always start at 0 after zooming for scrolling : issue redraw left part
+        let start = 0;
+        let end = Math.max(start + parentWidth, width);
+
+        let peaks;
+        const w = Math.round(wavesurfer.getDuration() *
+          wavesurfer.params.minPxPerSec *
+          wavesurfer.params.pixelRatio)
+        peaks = wavesurfer.backend.getPeaks(
+          w, 0, w);
+        allPeaks = allPeaks.concat(peaks)
+        wavesurfer.drawer.drawPeaks(allPeaks, width, start, end);
+        // }
+        wavesurfer.fireEvent('redraw', peaks, width);
+      }
+
+      document.querySelector('#play').addEventListener('click', () => {
+        load(play)
+      })
+
+      document.querySelector('#btnStop').addEventListener('click', () => {
+        wavesurfer.zoom(80)
+      })
+
+      wavesurfer.on('audioprocess', t => {
+        const duration = wavesurfer.backend.getDuration()
+        if (duration - t < 1 && !hasLoad && !loading) {
+          loading = true
+          load(() => {
+            loading = false
+            hasLoad = true
+          })
+        }
+      })
+
+      wavesurfer.on('pause', () => {
+        if (hasLoad) {
+          hasLoad = false
+          play()
+        }
+      })
+
+
+      //TimeLine
+      // wavesurfer.on('ready', function () {
+      //   var timeline = Object.create(WaveSurfer.timeline);
+
+      //   timeline.create({
+      //     wavesurfer: wavesurfer,
+      //     container: '#wave-timeline'
+      //   });
+      // });
+
+      // // load 音频
+      // wavesurfer.load('G.E.M. 邓紫棋 - 喜欢你.mp3');      //此处添加自己的音频路径（可将音频存入前端可访问的文件夹内，避免跨域）
+
+      // console.log(wavesurfer.getDuration());                 //test
+      // console.log(wavesurfer.getVolume());                   // test
+      // setTimeout(function () {                                //test
+      //   console.log(wavesurfer.getDuration());
+      // }, 500)
+
+      // //Stop
+      // btnStop.addEventListener('click', function () {
+      //   wavesurfer.stop();
+      // });
+      // // PlayPause
+      // var playPause = document.querySelector('#playPause');
+      // playPause.addEventListener('click', function () {
+      //   wavesurfer.playPause();
+      // });
+      // // Toggle play/pause text
+      // wavesurfer.on('play', function () {
+      //   document.querySelector('#play').style.display = 'none';
+      //   document.querySelector('#pause').style.display = '';
+      // });
+      // wavesurfer.on('pause', function () {
+      //   document.querySelector('#play').style.display = '';
+      //   document.querySelector('#pause').style.display = 'none';
+      // });
+
+      // var d1 = new Date();                          //test
+      // console.log(d1.toLocaleString());               //test
+      // console.log('test');                            //test
+
+      // // Zoom slider
+      // var slider = document.querySelector('[data-action="zoom"]');
+      // slider.value = wavesurfer.params.minPxPerSec;
+      // slider.min = wavesurfer.params.minPxPerSec;
+      // slider.addEventListener('input', function () {
+      //   wavesurfer.zoom(Number(this.value));
+      // });
+
+    });
+  </script>
+</body>
+
+</html>
